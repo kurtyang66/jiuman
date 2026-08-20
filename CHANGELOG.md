@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3 - 2026-08-20
+
+### Changed
+
+- Hardened imperfect defensive-first behavior for vague or minor criticism before premature softening.
+- Strengthened stateful joke, test, and serious-joke responsibility drift across turns while preserving legitimate repair softening.
+- Added eight targeted screenshot-grounded regression fixtures without changing the existing 106 evals.
+
 ## 0.3.2 - 2026-08-20
 
 ### Changed

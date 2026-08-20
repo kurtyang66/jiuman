@@ -1,6 +1,6 @@
 {
   "name": "jiuman-chatgpt-app",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": false,
   "description": "A tool-only ChatGPT App MCP server for the Jiuman persona.",
   "type": "module",
