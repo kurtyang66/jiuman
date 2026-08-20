@@ -7,7 +7,7 @@ import { createGenerationProvider } from "./providers/index.js";
 import type { GenerationProvider } from "./providers/types.js";
 import { registerReplyAsJiumanTool } from "./tools/reply-as-jiuman.js";
 
-export const APP_VERSION = "0.2.0";
+export const APP_VERSION = "0.3.0";
 export const DEFAULT_PORT = 3000;
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local"), override: false, quiet: true });

@@ -104,6 +104,18 @@ In ChatGPT Developer Mode, add the public `https://your-deployment.example/mcp` 
 
 The default `openrouter/free` router selects an available free model, so responses can vary across models and availability windows. Remote smoke verifies end-to-end connectivity and basic Jiuman fidelity; it is not a deterministic model benchmark. Avoid sending sensitive relationship content unless the selected provider's terms, retention, and data residency are acceptable.
 
+### Custom GPT Action fallback
+
+If ChatGPT Developer Mode is unavailable for the account, the same `reply_as_jiuman` generation pipeline is also available through the stateless REST endpoint:
+
+```text
+POST https://jiuman.vercel.app/api/reply
+```
+
+The paste-ready OpenAPI 3.1 schema is [docs/gpt-action-openapi.yaml](docs/gpt-action-openapi.yaml). In GPT Builder, open `Configure → Actions → Create new action`, paste that schema, and leave Action authentication unset. The Custom GPT never receives `OPENROUTER_API_KEY`; the maintainer deployment keeps that credential server-side. This endpoint is a maintainer development deployment, not a public multi-user credential service.
+
+The Action adapter calls the existing `createReplyAsJiumanHandler` pipeline and does not duplicate persona or provider logic. It returns the same structured reply fields as the MCP tool, does not persist conversation data, and does not log raw request bodies. Use `npm run smoke:action -- https://your-deployment.example/api/reply` for one bounded real-provider check; it prints only safe pass/fail metadata.
+
 ## Files
 
 - SKILL.md — the reusable persona instructions
@@ -111,8 +123,11 @@ The default `openrouter/free` router selects an available free model, so respons
 - evals/reply-cases.json — 66 behavior and safety evaluation cases
 - evals/README.md — evaluation format and review guidance
 - server/ — tool-only MCP server, provider registry, and adapters
+- api/reply.ts — stateless Custom GPT Action adapter
+- docs/gpt-action-openapi.yaml — paste-ready GPT Action schema
 - tests/ — unit and contract tests with mock providers
 - scripts/live-smoke.ts — opt-in, bounded OpenRouter Free smoke test
+- scripts/action-smoke.ts — one bounded production REST Action smoke test
 
 ## License
 

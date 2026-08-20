@@ -48,7 +48,7 @@ test("HTTP server exposes healthz and stateless MCP discovery without a provider
     assert.deepEqual(await health.json(), {
       ok: true,
       service: "jiuman",
-      version: "0.2.0",
+      version: "0.3.0",
       provider: "mock",
       provider_configured: true,
       model: "mock-model",
@@ -74,7 +74,7 @@ test("HTTP server exposes healthz and stateless MCP discovery without a provider
       result?: { serverInfo?: { name?: string; version?: string } };
     };
     assert.equal(initialized.result?.serverInfo?.name, "jiuman");
-    assert.equal(initialized.result?.serverInfo?.version, "0.2.0");
+    assert.equal(initialized.result?.serverInfo?.version, "0.3.0");
 
     const toolsList = await fetch(`${baseUrl}/mcp`, {
       method: "POST",

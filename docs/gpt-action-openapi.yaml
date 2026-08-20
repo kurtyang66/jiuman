@@ -1,0 +1,139 @@
+openapi: 3.1.0
+info:
+  title: Jiuman Reply Action
+  description: Generate one reply in the Jiuman relationship persona from the latest partner message and optional context.
+  version: 0.3.0
+servers:
+  - url: https://jiuman.vercel.app
+    description: Jiuman production Action endpoint
+security: []
+paths:
+  /api/reply:
+    post:
+      operationId: replyAsJiuman
+      summary: Reply as Jiuman
+      description: Generate a single Jiuman persona reply. This action is stateless and does not persist conversation data.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplyRequest'
+      responses:
+        '200':
+          description: Generated Jiuman reply
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplyResponse'
+        '400':
+          description: The request body is invalid JSON or does not match the request schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: The HTTP method is not supported.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Reply generation could not be completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    ReplyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - latest_message
+      properties:
+        latest_message:
+          type: string
+          minLength: 1
+          maxLength: 8000
+          description: The latest message from the partner that Jiuman should answer.
+        conversation:
+          type: array
+          maxItems: 50
+          description: Optional recent conversation context, ordered from oldest to newest.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - speaker
+              - text
+            properties:
+              speaker:
+                type: string
+                enum:
+                  - partner
+                  - user
+                description: Whether this message was written by the partner or the user.
+              text:
+                type: string
+                maxLength: 8000
+                description: The message text.
+        relationship_context:
+          type: string
+          maxLength: 4000
+          description: Optional concise relationship context relevant to this reply.
+        intensity:
+          type: string
+          enum:
+            - normal
+            - jealous
+            - hurt
+            - maximum
+          default: maximum
+          description: Requested emotional intensity.
+        language:
+          type: string
+          enum:
+            - zh-TW
+            - zh-CN
+            - en
+          default: zh-TW
+          description: Language for the generated reply.
+        output_mode:
+          type: string
+          enum:
+            - reply_only
+            - reply_with_analysis
+          default: reply_only
+          description: Return only the reply, or the reply plus bounded observable analysis.
+    ReplyResponse:
+      type: object
+      required:
+        - reply
+      properties:
+        reply:
+          type: string
+          description: The generated message to send to the partner.
+        mode:
+          type: string
+          enum:
+            - normal
+            - jealous
+            - hurt
+            - maximum
+        triggers:
+          type: array
+          items:
+            type: string
+        brief_analysis:
+          type: string
+          description: Brief observable analysis when output_mode is reply_with_analysis.
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: string
