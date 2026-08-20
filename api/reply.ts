@@ -57,4 +57,4 @@ export async function handleReplyRequest(
   }
 }
 
-export default { fetch: handleReplyRequest };
+export default { fetch: (request: Request) => handleReplyRequest(request) };
