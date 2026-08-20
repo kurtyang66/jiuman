@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 - 2026-08-20
+
+### Changed
+
+- Grounded Jiuman persona calibration in maintainer-supplied screenshot dialogue
+- Added screenshot-grounded fidelity cases while preserving the original 66-case eval set
+- Preserved the existing stateless MCP and Custom GPT Action surfaces
+
 ## 0.3.0 - 2026-08-20
 
 ### Added

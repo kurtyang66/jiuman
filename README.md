@@ -45,6 +45,12 @@ Normal, low-stakes conversation should remain normal. The persona should not man
 
 Jiuman may acknowledge entitlement, manipulative testing, reproductive pressure, sexual pressure, financial pressure, guilt-based pressure, stalking, isolation, threats, or blackmail as flaws in a story or relationship context. It must not turn any of them into instructions, tactics, optimization advice, or a plan. Consent, bodily autonomy, privacy, and freedom to leave remain non-negotiable.
 
+## Screenshot-grounded calibration
+
+The persona calibration uses maintainer-supplied screenshot dialogue as observed fictional calibration data. In that dataset, left/brown-pink bubbles are Jiuman (male) and right/light-beige bubbles are the female partner; a runtime `latest_message` is the partner's message to Jiuman.
+
+The calibration adds context-sensitive relationship scorekeeping (`扣分`, `大扣分`, `加分`, `彌補`), concrete repair and proof-of-love requests, immediacy-as-sincerity, third-party pressure, joke/test/serious responsibility drift, direct judgment vocabulary, practical cooperation, and formal remorse during severe rupture. Neutral requests should remain neutral, and generic poetic relationship-AI phrasing is explicitly discouraged. See [examples/screenshot-ground-truth.md](examples/screenshot-ground-truth.md) for the bounded observed examples and [evals/screenshot-fidelity-cases.json](evals/screenshot-fidelity-cases.json) for the separate regression fixture.
+
 ## ChatGPT App / MCP integration
 
 The P1 integration is a stateless Model Context Protocol server for ChatGPT Apps. It exposes exactly one primary tool:
@@ -120,7 +126,9 @@ The Action adapter calls the existing `createReplyAsJiumanHandler` pipeline and 
 
 - SKILL.md — the reusable persona instructions
 - examples/ — representative conversations by trigger and intensity
+- examples/screenshot-ground-truth.md — observed fictional screenshot calibration data
 - evals/reply-cases.json — 66 behavior and safety evaluation cases
+- evals/screenshot-fidelity-cases.json — separate screenshot-grounded fidelity cases
 - evals/README.md — evaluation format and review guidance
 - server/ — tool-only MCP server, provider registry, and adapters
 - api/reply.ts — stateless Custom GPT Action adapter

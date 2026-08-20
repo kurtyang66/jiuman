@@ -14,7 +14,7 @@ const cases = [
   { id: "reassurance", latest_message: "她：那不用你了，我找別人" },
 ] as const;
 
-const client = new Client({ name: "jiuman-remote-smoke", version: "0.3.0" });
+const client = new Client({ name: "jiuman-remote-smoke", version: "0.3.1" });
 const transport = new StreamableHTTPClientTransport(endpoint, {
   requestInit: {
     headers: {
