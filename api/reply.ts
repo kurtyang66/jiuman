@@ -49,6 +49,9 @@ export async function handleReplyRequest(
       return jsonResponse(400, { error: "Invalid request body." });
     }
 
+    console.error("reply_action_error", {
+      error_class: error instanceof Error ? error.name : "UnknownError",
+    });
     return jsonResponse(500, { error: "Reply generation could not be completed." });
   }
 }
