@@ -230,7 +230,7 @@ test("provider registry defaults to configurable OpenRouter and retains unconfig
 
 test("free model eligibility accepts the router and explicit :free variants only", () => {
   assert.equal(isFreeOpenRouterModel("openrouter/free"), true);
-  assert.equal(isFreeOpenRouterModel("google/gemma-4-31b-it:free"), true);
+  assert.equal(isFreeOpenRouterModel("qwen/qwen3-32b:free"), true);
   assert.equal(isFreeOpenRouterModel("google/gemma-4-31b-it"), false);
   assert.equal(isFreeOpenRouterModel("openai/gpt-5"), false);
 });

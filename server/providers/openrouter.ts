@@ -9,7 +9,7 @@ import type { GenerationProvider, GenerationRequest, GenerationResult } from "./
 
 export const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 export const OPENROUTER_FREE_MODEL = "openrouter/free";
-export const OPENROUTER_DEFAULT_MODEL = "google/gemma-4-31b-it:free";
+export const OPENROUTER_DEFAULT_MODEL = "qwen/qwen3-32b:free";
 
 export function isFreeOpenRouterModel(model: string): boolean {
   const normalized = model.trim();
