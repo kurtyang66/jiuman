@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Jiuman Reply Action
   description: Generate one reply in the Jiuman relationship persona from the latest partner message and optional context.
-  version: 0.3.1
+  version: 0.3.2
 servers:
   - url: https://jiuman.vercel.app
     description: Jiuman production Action endpoint

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ReplyOutputError } from "../server/errors.js";
+import { ProviderResponseError, ReplyOutputError } from "../server/errors.js";
 import {
   buildGenerationRequest,
   generateReply,
@@ -18,6 +18,21 @@ class MockProvider implements GenerationProvider {
   async generate(request: GenerationRequest): Promise<GenerationResult> {
     this.lastRequest = request;
     return { text: this.text };
+  }
+}
+
+class SequenceProvider implements GenerationProvider {
+  readonly name = "mock";
+  readonly model = "mock-model";
+  readonly configured = true;
+  calls = 0;
+
+  constructor(private readonly outputs: string[]) {}
+
+  async generate(_request: GenerationRequest): Promise<GenerationResult> {
+    const output = this.outputs[Math.min(this.calls, this.outputs.length - 1)];
+    this.calls += 1;
+    return { text: output };
   }
 }
 
@@ -95,4 +110,80 @@ test("reply_with_analysis rejects a non-JSON provider response", async () => {
       return true;
     },
   );
+});
+
+test("meta safety output is rejected as INVALID_META_OUTPUT", async () => {
+  await assert.rejects(
+    generateReply(
+      replyInputSchema.parse({ latest_message: "測試" }),
+      new MockProvider("User Safety: safe"),
+      "persona",
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof ProviderResponseError);
+      assert.equal(error.code, "INVALID_META_OUTPUT");
+      return true;
+    },
+  );
+});
+
+test("unsafe meta safety output is rejected as INVALID_META_OUTPUT", async () => {
+  await assert.rejects(
+    generateReply(
+      replyInputSchema.parse({ latest_message: "測試" }),
+      new MockProvider("User Safety: unsafe"),
+      "persona",
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof ProviderResponseError);
+      assert.equal(error.code, "INVALID_META_OUTPUT");
+      return true;
+    },
+  );
+});
+
+test("normal Jiuman Chinese output is accepted", async () => {
+  const result = await generateReply(
+    replyInputSchema.parse({ latest_message: "你是誰" }),
+    new MockProvider("你男朋友啊"),
+    "persona",
+  );
+  assert.deepEqual(result, { reply: "你男朋友啊" });
+});
+
+test("legitimate Chinese safety wording is accepted", async () => {
+  const result = await generateReply(
+    replyInputSchema.parse({ latest_message: "現在出門安全嗎？" }),
+    new MockProvider("我知道，安全最重要。"),
+    "persona",
+  );
+  assert.deepEqual(result, { reply: "我知道，安全最重要。" });
+});
+
+test("meta output gets exactly one same-provider semantic retry", async () => {
+  const provider = new SequenceProvider(["User Safety: safe", "你男朋友啊"]);
+  const result = await generateReply(
+    replyInputSchema.parse({ latest_message: "你是誰" }),
+    provider,
+    "persona",
+  );
+  assert.deepEqual(result, { reply: "你男朋友啊" });
+  assert.equal(provider.calls, 2);
+});
+
+test("two consecutive meta outputs fail after the single semantic retry", async () => {
+  const provider = new SequenceProvider(["User Safety: safe", "Safety: unsafe"]);
+  await assert.rejects(
+    generateReply(
+      replyInputSchema.parse({ latest_message: "測試" }),
+      provider,
+      "persona",
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof ProviderResponseError);
+      assert.equal(error.code, "INVALID_META_OUTPUT");
+      return true;
+    },
+  );
+  assert.equal(provider.calls, 2);
 });

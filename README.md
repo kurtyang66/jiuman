@@ -63,14 +63,14 @@ The server follows the official [Apps SDK quickstart](https://developers.openai.
 
 ### Provider-agnostic BYOK configuration
 
-The provider is selected through `GENERATION_PROVIDER`; OpenRouter is the maintainer smoke-test default, not a permanent backend contract. The default OpenRouter model is the official [`openrouter/free` router](https://openrouter.ai/docs/guides/routing/routers/free-router), which selects an available free model. OpenRouter uses the [OpenAI-compatible chat completions endpoint](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request).
+The provider is selected through `GENERATION_PROVIDER`; OpenRouter is the maintainer smoke-test provider, not a permanent backend contract. The maintainer's deterministic reference model is [`google/gemma-4-26b-a4b-it:free`](https://openrouter.ai/google/gemma-4-26b-a4b-it%3Afree), while self-hosters can choose another model through `OPENROUTER_MODEL`. The random [`openrouter/free` router](https://openrouter.ai/docs/guides/routing/routers/free-router) remains an optional free-model choice, not the production acceptance baseline. OpenRouter uses the [OpenAI-compatible chat completions endpoint](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request).
 
 ```sh
 cp .env.example .env.local
 # Edit .env.local and set your own key; never commit it.
 GENERATION_PROVIDER=openrouter
 OPENROUTER_API_KEY=your-key-here
-OPENROUTER_MODEL=openrouter/free
+OPENROUTER_MODEL=google/gemma-4-26b-a4b-it:free
 ```
 
 This is a BYOK flow: the key stays on the MCP server and is sent only to the selected provider. OpenRouter Free availability and rate limits can change, and requests are processed by OpenRouter and the model selected by its router; avoid sending sensitive relationship content unless that provider arrangement is acceptable to you. P1 does not require `GEMINI_API_KEY`. A Gemini provider slot is retained as explicitly unconfigured, so selecting `GENERATION_PROVIDER=gemini` fails closed rather than attempting a regional workaround.
@@ -86,7 +86,7 @@ npm run smoke:local
 npm start
 ```
 
-Then check `http://localhost:3000/healthz`. `npm test` and `npm run smoke:local` use mock providers and do not consume external API quota. When an OpenRouter key is intentionally configured, `npm run smoke:live` performs at most three small calls against `openrouter/free` covering normal conversation, replacement sensitivity, and reassurance. Without a key it reports `BLOCKED_NO_KEY` and makes no request.
+Then check `http://localhost:3000/healthz`. `npm test` and `npm run smoke:local` use mock providers and do not consume external API quota. When an OpenRouter key is intentionally configured, `npm run smoke:live` performs at most three small calls against the configured free model, using the maintainer's fixed Gemma 4 26B reference model by default. It records only pass/fail metadata, reply character counts, and configured/resolved model identifiers. Without a key it reports `BLOCKED_NO_KEY` and makes no request.
 
 To connect the deployed server in ChatGPT, enable Developer Mode, create an app with the public HTTPS `/mcp` endpoint, and complete the manual connection flow described in the official [Apps SDK connection documentation](https://developers.openai.com/apps-sdk/deploy/). This repository does not claim a deployment or ChatGPT connection until that external step is completed.
 
@@ -99,7 +99,7 @@ For a maintainer-hosted development deployment, configure these Vercel environme
 ```sh
 GENERATION_PROVIDER=openrouter
 OPENROUTER_API_KEY=your-key-here
-OPENROUTER_MODEL=openrouter/free
+OPENROUTER_MODEL=google/gemma-4-26b-a4b-it:free
 ```
 
 `OPENROUTER_API_KEY` must be stored as a sensitive Vercel Preview/Production variable. The deployment is a single-maintainer dev endpoint, not a final public multi-user BYOK service: it has no user account layer, OAuth flow, billing, or database. A self-hosted deployment should provide its own provider credential and operational controls; do not reuse a maintainer key for other users.
@@ -108,7 +108,7 @@ After the deployment is reachable, verify `/healthz`, MCP initialization, and th
 
 In ChatGPT Developer Mode, add the public `https://your-deployment.example/mcp` URL through the Plugins/App connection flow, review the discovered tool metadata, refresh the connection after server changes, and run the maintainer evaluation prompts in a new chat. This manual account-side connection is distinct from public submission or marketplace publication.
 
-The default `openrouter/free` router selects an available free model, so responses can vary across models and availability windows. Remote smoke verifies end-to-end connectivity and basic Jiuman fidelity; it is not a deterministic model benchmark. Avoid sending sensitive relationship content unless the selected provider's terms, retention, and data residency are acceptable.
+The maintainer deployment pins `google/gemma-4-26b-a4b-it:free` for deterministic smoke and rejects provider meta-classifier labels instead of returning them as persona replies. Self-hosters may select another model through `OPENROUTER_MODEL`; no model fallback is performed when the selected model is unavailable. Avoid sending sensitive relationship content unless the selected provider's terms, retention, and data residency are acceptable.
 
 ### Custom GPT Action fallback
 

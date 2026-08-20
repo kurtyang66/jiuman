@@ -4,10 +4,22 @@ import {
   ProviderRateLimitError,
   ProviderResponseError,
 } from "../errors.js";
+import type {
+  OpenRouter404Classification,
+  OpenRouterErrorDiagnostics,
+  RateLimitDiagnostics,
+  RateLimitSource,
+} from "../errors.js";
 import type { GenerationProvider, GenerationRequest, GenerationResult } from "./types.js";
 
 export const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 export const OPENROUTER_FREE_MODEL = "openrouter/free";
+export const OPENROUTER_DEFAULT_MODEL = "google/gemma-4-26b-a4b-it:free";
+
+export function isFreeOpenRouterModel(model: string): boolean {
+  const normalized = model.trim();
+  return normalized === OPENROUTER_FREE_MODEL || normalized.endsWith(":free");
+}
 
 type Sleep = (milliseconds: number) => Promise<void>;
 
@@ -29,6 +41,18 @@ type OpenRouterResponse = {
       content?: unknown;
     };
   }>;
+};
+
+type OpenRouterErrorResponse = {
+  error?: {
+    code?: unknown;
+    message?: unknown;
+    metadata?: {
+      provider_name?: unknown;
+      provider_code?: unknown;
+      error_type?: unknown;
+    };
+  };
 };
 
 function defaultSleep(milliseconds: number): Promise<void> {
@@ -57,16 +81,120 @@ function responseContent(payload: OpenRouterResponse): string {
   return "";
 }
 
-function retryAfterMilliseconds(response: Response, attempt: number): number {
+function retryAfterSeconds(response: Response): number | undefined {
   const retryAfter = response.headers.get("retry-after");
   if (retryAfter) {
     const seconds = Number(retryAfter);
     if (Number.isFinite(seconds) && seconds >= 0) {
-      return Math.min(seconds * 1000, 10_000);
+      return seconds;
     }
   }
 
+  return undefined;
+}
+
+function retryAfterMilliseconds(response: Response, attempt: number): number {
+  const seconds = retryAfterSeconds(response);
+  if (seconds !== undefined) {
+    return Math.min(seconds * 1000, 10_000);
+  }
+
   return Math.min(2_000, 250 * 2 ** attempt);
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
+}
+
+function boundedString(value: unknown, maximumLength: number): string | undefined {
+  const normalized = nonEmptyString(value);
+  return normalized ? normalized.slice(0, maximumLength) : undefined;
+}
+
+function numericErrorCode(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || !/^\d+$/.test(value.trim())) return undefined;
+  const code = Number(value.trim());
+  return Number.isSafeInteger(code) ? code : undefined;
+}
+
+function classify404(message?: string, errorType?: string): OpenRouter404Classification {
+  const text = `${message ?? ""} ${errorType ?? ""}`.toLowerCase();
+
+  if (/data[ _-]?policy|privacy|zero[ _-]?data|\bzdr\b|data collection/.test(text)) {
+    return "DATA_POLICY_NO_ENDPOINT";
+  }
+  if (/no such model|model (?:not found|does not exist|unknown)|unknown model|invalid model/.test(text)) {
+    return "MODEL_NOT_FOUND";
+  }
+  if (
+    /no (?:compatible )?endpoint|no endpoints|no available (?:model )?provider|no provider.*available|endpoint.*available/.test(
+      text,
+    )
+  ) {
+    return "NO_COMPATIBLE_ENDPOINT";
+  }
+  return "UNKNOWN_404";
+}
+
+async function notFoundDiagnostics(response: Response): Promise<OpenRouterErrorDiagnostics> {
+  let errorPayload: OpenRouterErrorResponse | undefined;
+  try {
+    errorPayload = (await response.json()) as OpenRouterErrorResponse;
+  } catch {
+    errorPayload = undefined;
+  }
+
+  const error = errorPayload?.error;
+  const message = boundedString(error?.message, 256);
+  const errorType = boundedString(error?.metadata?.error_type, 128);
+  const providerName = boundedString(error?.metadata?.provider_name, 128);
+  const providerCode = boundedString(error?.metadata?.provider_code, 128);
+  const errorCode = numericErrorCode(error?.code);
+
+  return {
+    classification: classify404(message, errorType),
+    ...(errorCode !== undefined ? { error_code: errorCode } : {}),
+    ...(message ? { error_message: message } : {}),
+    ...(providerName ? { provider_name: providerName } : {}),
+    ...(providerCode ? { provider_code: providerCode } : {}),
+  };
+}
+
+async function rateLimitDiagnostics(response: Response): Promise<RateLimitDiagnostics> {
+  let errorPayload: OpenRouterErrorResponse | undefined;
+  try {
+    errorPayload = (await response.json()) as OpenRouterErrorResponse;
+  } catch {
+    errorPayload = undefined;
+  }
+
+  const metadata = errorPayload?.error?.metadata;
+  const providerCode = nonEmptyString(metadata?.provider_code);
+  const errorType = nonEmptyString(metadata?.error_type);
+  const rateLimitLimit = nonEmptyString(response.headers.get("x-ratelimit-limit"));
+  const rateLimitRemaining = nonEmptyString(response.headers.get("x-ratelimit-remaining"));
+  const rateLimitReset = nonEmptyString(response.headers.get("x-ratelimit-reset"));
+  const hasPlatformHeaders = Boolean(rateLimitLimit || rateLimitRemaining || rateLimitReset);
+  const retryAfter = retryAfterSeconds(response);
+
+  let source: RateLimitSource = "UNKNOWN";
+  if (providerCode) {
+    source = "UPSTREAM_PROVIDER";
+  } else if (hasPlatformHeaders || errorType === "rate_limit_exceeded") {
+    source = "OPENROUTER_PLATFORM";
+  }
+
+  return {
+    source,
+    ...(providerCode ? { provider_code: providerCode } : {}),
+    ...(retryAfter !== undefined ? { retry_after_seconds: retryAfter } : {}),
+    ...(rateLimitLimit ? { "x-ratelimit-limit": rateLimitLimit } : {}),
+    ...(rateLimitRemaining ? { "x-ratelimit-remaining": rateLimitRemaining } : {}),
+    ...(rateLimitReset ? { "x-ratelimit-reset": rateLimitReset } : {}),
+  };
 }
 
 function shouldRetry(status: number): boolean {
@@ -76,6 +204,7 @@ function shouldRetry(status: number): boolean {
 export class OpenRouterProvider implements GenerationProvider {
   readonly name = "openrouter";
   readonly model: string;
+  lastResolvedModel?: string;
   private readonly apiKey?: string;
   private readonly baseUrl: string;
   private readonly siteUrl?: string;
@@ -86,7 +215,7 @@ export class OpenRouterProvider implements GenerationProvider {
 
   constructor(options: OpenRouterProviderOptions = {}) {
     this.apiKey = options.apiKey?.trim() || undefined;
-    this.model = options.model?.trim() || OPENROUTER_FREE_MODEL;
+    this.model = options.model?.trim() || OPENROUTER_DEFAULT_MODEL;
     this.baseUrl = (options.baseUrl || OPENROUTER_DEFAULT_BASE_URL).replace(/\/$/, "");
     this.siteUrl = options.siteUrl?.trim() || undefined;
     this.appName = options.appName?.trim() || undefined;
@@ -119,10 +248,6 @@ export class OpenRouterProvider implements GenerationProvider {
         { role: "system", content: request.systemPrompt },
         { role: "user", content: request.userPrompt },
       ],
-      reasoning: {
-        effort: "none",
-        exclude: true,
-      },
       temperature: request.outputMode === "reply_with_analysis" ? 0.4 : 0.7,
       max_tokens: request.outputMode === "reply_with_analysis" ? 320 : 220,
     };
@@ -149,7 +274,11 @@ export class OpenRouterProvider implements GenerationProvider {
             await this.sleep(retryAfterMilliseconds(response, attempt));
             continue;
           }
-          throw new ProviderRateLimitError("OpenRouter rate limit reached.");
+          throw new ProviderRateLimitError(
+            "OpenRouter rate limit reached.",
+            response.status,
+            await rateLimitDiagnostics(response),
+          );
         }
 
         if (shouldRetry(response.status) && attempt < this.maxRetries) {
@@ -157,10 +286,12 @@ export class OpenRouterProvider implements GenerationProvider {
           continue;
         }
 
+        const diagnostics = response.status === 404 ? await notFoundDiagnostics(response) : undefined;
         throw new ProviderError(`OpenRouter returned HTTP ${response.status}.`, {
           code: "UPSTREAM_ERROR",
           status: response.status,
           retryable: shouldRetry(response.status),
+          ...(diagnostics ? { diagnostics } : {}),
         });
       }
 
@@ -176,10 +307,9 @@ export class OpenRouterProvider implements GenerationProvider {
         throw new ProviderResponseError("OpenRouter returned an empty assistant message.");
       }
 
-      return {
-        text,
-        model: typeof payload.model === "string" ? payload.model : this.model,
-      };
+      const resolvedModel = typeof payload.model === "string" ? payload.model : this.model;
+      this.lastResolvedModel = resolvedModel;
+      return { text, model: resolvedModel };
     }
 
     throw new ProviderResponseError("OpenRouter request did not produce a response.");

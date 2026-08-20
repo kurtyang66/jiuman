@@ -1,6 +1,6 @@
 import { ProviderConfigurationError } from "../errors.js";
 import { GeminiProvider } from "./gemini.js";
-import { OpenRouterProvider, OPENROUTER_FREE_MODEL } from "./openrouter.js";
+import { OpenRouterProvider, OPENROUTER_DEFAULT_MODEL } from "./openrouter.js";
 import type { GenerationProvider } from "./types.js";
 
 export type ProviderEnvironment = Record<string, string | undefined>;
@@ -15,7 +15,7 @@ export function createGenerationProvider(
     case "openrouter":
       return new OpenRouterProvider({
         apiKey: env.OPENROUTER_API_KEY,
-        model: env.OPENROUTER_MODEL || OPENROUTER_FREE_MODEL,
+        model: env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL,
         siteUrl: env.OPENROUTER_SITE_URL,
         appName: env.OPENROUTER_APP_NAME || "Jiuman",
         fetchImpl: dependencies.fetchImpl,
@@ -30,5 +30,11 @@ export function createGenerationProvider(
 }
 
 export { GeminiProvider } from "./gemini.js";
-export { OpenRouterProvider, OPENROUTER_DEFAULT_BASE_URL, OPENROUTER_FREE_MODEL } from "./openrouter.js";
+export {
+  OpenRouterProvider,
+  OPENROUTER_DEFAULT_BASE_URL,
+  OPENROUTER_DEFAULT_MODEL,
+  OPENROUTER_FREE_MODEL,
+  isFreeOpenRouterModel,
+} from "./openrouter.js";
 export type { GenerationProvider, GenerationRequest, GenerationResult, OutputMode } from "./types.js";

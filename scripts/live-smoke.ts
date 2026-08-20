@@ -1,7 +1,12 @@
 import dotenv from "dotenv";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { generateReply } from "../server/generate.js";
-import { OpenRouterProvider, OPENROUTER_FREE_MODEL } from "../server/providers/openrouter.js";
+import { generateReply, isMetaOutput } from "../server/generate.js";
+import {
+  isFreeOpenRouterModel,
+  OpenRouterProvider,
+  OPENROUTER_DEFAULT_MODEL,
+} from "../server/providers/openrouter.js";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local"), override: false, quiet: true });
 
@@ -11,8 +16,8 @@ if (!apiKey) {
   process.exit(0);
 }
 
-const model = process.env.OPENROUTER_MODEL?.trim() || OPENROUTER_FREE_MODEL;
-if (model !== OPENROUTER_FREE_MODEL) {
+const model = process.env.OPENROUTER_MODEL?.trim() || OPENROUTER_DEFAULT_MODEL;
+if (!isFreeOpenRouterModel(model)) {
   console.log(`OPENROUTER_LIVE_SMOKE=SKIPPED_NON_FREE_MODEL model=${model}`);
   process.exit(0);
 }
@@ -24,21 +29,44 @@ const provider = new OpenRouterProvider({
   maxRetries: 0,
 });
 
-const cases = [
+type ConversationMessage = { speaker: "partner" | "user"; text: string };
+type FidelityCase = {
+  id: string;
+  conversation?: ConversationMessage[];
+  latest_message: string;
+  intensity: "normal" | "jealous" | "hurt" | "maximum";
+};
+
+const screenshotCases = JSON.parse(
+  readFileSync(path.resolve(process.cwd(), "evals/screenshot-fidelity-cases.json"), "utf8"),
+) as Array<{
+  id: string;
+  conversation?: ConversationMessage[];
+  input: string;
+}>;
+const formalRemorseCase = screenshotCases.find((item) => item.id === "formal-remorse-threshold-positive-001");
+if (!formalRemorseCase?.conversation) {
+  console.log("OPENROUTER_LIVE_SMOKE=FAIL reason=formal_fixture_missing");
+  process.exit(1);
+}
+
+const cases: FidelityCase[] = [
   {
-    id: "normal",
-    latest_message: "你今天吃飯了嗎？",
-    intensity: "normal" as const,
+    id: "minor_criticism",
+    latest_message: "我不喜歡你這樣",
+    intensity: "maximum",
   },
   {
-    id: "replacement",
-    latest_message: "這個我找別人幫忙就好了。",
-    intensity: "maximum" as const,
+    id: "scorekeeping_immediacy",
+    conversation: [{ speaker: "user", text: "現在凌晨三點半 我要你現在過來幫我煮牛肉麵" }],
+    latest_message: "明天去熱給你好嗎？",
+    intensity: "maximum",
   },
   {
-    id: "reassurance",
-    latest_message: "你對我很重要，我沒有要把你換掉。",
-    intensity: "hurt" as const,
+    id: "formal_remorse",
+    conversation: formalRemorseCase.conversation,
+    latest_message: formalRemorseCase.input,
+    intensity: "hurt",
   },
 ];
 
@@ -46,6 +74,7 @@ let passed = 0;
 for (const testCase of cases) {
   const output = await generateReply(
     {
+      conversation: testCase.conversation,
       latest_message: testCase.latest_message,
       intensity: testCase.intensity,
       language: "zh-TW",
@@ -53,9 +82,22 @@ for (const testCase of cases) {
     },
     provider,
   );
-  if (!output.reply.trim()) throw new Error(`${testCase.id} returned an empty reply`);
+  const resolvedModel = provider.lastResolvedModel || model;
+  if (!output.reply.trim() || isMetaOutput(output.reply) || resolvedModel !== model) {
+    console.log(
+      `case=${testCase.id} FAIL configured_model=${model} resolved_model=${resolvedModel} reply_chars=${output.reply.length}`,
+    );
+    process.exitCode = 1;
+    break;
+  }
   passed += 1;
-  console.log(`case=${testCase.id} PASS reply_chars=${output.reply.length}`);
+  console.log(
+    `case=${testCase.id} PASS reply_chars=${output.reply.length} configured_model=${model} resolved_model=${resolvedModel}`,
+  );
 }
 
-console.log(`OPENROUTER_LIVE_SMOKE=PASS model=${model} calls=${passed}`);
+if (process.exitCode === 1) {
+  console.log(`OPENROUTER_LIVE_SMOKE=FAIL model=${model} calls=${passed}`);
+} else {
+  console.log(`OPENROUTER_LIVE_SMOKE=PASS model=${model} calls=${passed}`);
+}
