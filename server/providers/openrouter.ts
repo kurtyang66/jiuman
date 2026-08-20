@@ -119,6 +119,10 @@ export class OpenRouterProvider implements GenerationProvider {
         { role: "system", content: request.systemPrompt },
         { role: "user", content: request.userPrompt },
       ],
+      reasoning: {
+        effort: "none",
+        exclude: true,
+      },
       temperature: request.outputMode === "reply_with_analysis" ? 0.4 : 0.7,
       max_tokens: request.outputMode === "reply_with_analysis" ? 320 : 220,
     };

@@ -41,6 +41,10 @@ test("OpenRouter adapter sends an OpenAI-compatible chat completion request", as
       { role: "system", content: "system" },
       { role: "user", content: "user" },
     ],
+    reasoning: {
+      effort: "none",
+      exclude: true,
+    },
     temperature: 0.7,
     max_tokens: 220,
   });
