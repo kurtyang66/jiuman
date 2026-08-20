@@ -17,10 +17,27 @@ export type RateLimitDiagnostics = {
   "x-ratelimit-reset"?: string;
 };
 
+export type OpenRouter404Classification =
+  | "MODEL_NOT_FOUND"
+  | "NO_COMPATIBLE_ENDPOINT"
+  | "DATA_POLICY_NO_ENDPOINT"
+  | "UNKNOWN_404";
+
+export type OpenRouterErrorDiagnostics = {
+  classification: OpenRouter404Classification;
+  error_code?: number;
+  error_message?: string;
+  provider_name?: string;
+  provider_code?: string;
+};
+
+export type ProviderDiagnostics = RateLimitDiagnostics | OpenRouterErrorDiagnostics;
+
 export class ProviderError extends Error {
   readonly code: ProviderErrorCode;
   readonly status?: number;
   readonly retryable: boolean;
+  readonly diagnostics?: ProviderDiagnostics;
 
   constructor(
     message: string,
@@ -29,6 +46,7 @@ export class ProviderError extends Error {
       status?: number;
       retryable?: boolean;
       cause?: unknown;
+      diagnostics?: ProviderDiagnostics;
     },
   ) {
     super(message, { cause: options.cause });
@@ -36,6 +54,7 @@ export class ProviderError extends Error {
     this.code = options.code;
     this.status = options.status;
     this.retryable = options.retryable ?? false;
+    this.diagnostics = options.diagnostics;
   }
 }
 

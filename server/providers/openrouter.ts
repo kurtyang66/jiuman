@@ -4,12 +4,17 @@ import {
   ProviderRateLimitError,
   ProviderResponseError,
 } from "../errors.js";
-import type { RateLimitDiagnostics, RateLimitSource } from "../errors.js";
+import type {
+  OpenRouter404Classification,
+  OpenRouterErrorDiagnostics,
+  RateLimitDiagnostics,
+  RateLimitSource,
+} from "../errors.js";
 import type { GenerationProvider, GenerationRequest, GenerationResult } from "./types.js";
 
 export const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 export const OPENROUTER_FREE_MODEL = "openrouter/free";
-export const OPENROUTER_DEFAULT_MODEL = "qwen/qwen3-32b:free";
+export const OPENROUTER_DEFAULT_MODEL = "google/gemma-4-26b-a4b-it:free";
 
 export function isFreeOpenRouterModel(model: string): boolean {
   const normalized = model.trim();
@@ -40,7 +45,10 @@ type OpenRouterResponse = {
 
 type OpenRouterErrorResponse = {
   error?: {
+    code?: unknown;
+    message?: unknown;
     metadata?: {
+      provider_name?: unknown;
       provider_code?: unknown;
       error_type?: unknown;
     };
@@ -98,6 +106,61 @@ function nonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   return normalized || undefined;
+}
+
+function boundedString(value: unknown, maximumLength: number): string | undefined {
+  const normalized = nonEmptyString(value);
+  return normalized ? normalized.slice(0, maximumLength) : undefined;
+}
+
+function numericErrorCode(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || !/^\d+$/.test(value.trim())) return undefined;
+  const code = Number(value.trim());
+  return Number.isSafeInteger(code) ? code : undefined;
+}
+
+function classify404(message?: string, errorType?: string): OpenRouter404Classification {
+  const text = `${message ?? ""} ${errorType ?? ""}`.toLowerCase();
+
+  if (/data[ _-]?policy|privacy|zero[ _-]?data|\bzdr\b|data collection/.test(text)) {
+    return "DATA_POLICY_NO_ENDPOINT";
+  }
+  if (/no such model|model (?:not found|does not exist|unknown)|unknown model|invalid model/.test(text)) {
+    return "MODEL_NOT_FOUND";
+  }
+  if (
+    /no (?:compatible )?endpoint|no endpoints|no available (?:model )?provider|no provider.*available|endpoint.*available/.test(
+      text,
+    )
+  ) {
+    return "NO_COMPATIBLE_ENDPOINT";
+  }
+  return "UNKNOWN_404";
+}
+
+async function notFoundDiagnostics(response: Response): Promise<OpenRouterErrorDiagnostics> {
+  let errorPayload: OpenRouterErrorResponse | undefined;
+  try {
+    errorPayload = (await response.json()) as OpenRouterErrorResponse;
+  } catch {
+    errorPayload = undefined;
+  }
+
+  const error = errorPayload?.error;
+  const message = boundedString(error?.message, 256);
+  const errorType = boundedString(error?.metadata?.error_type, 128);
+  const providerName = boundedString(error?.metadata?.provider_name, 128);
+  const providerCode = boundedString(error?.metadata?.provider_code, 128);
+  const errorCode = numericErrorCode(error?.code);
+
+  return {
+    classification: classify404(message, errorType),
+    ...(errorCode !== undefined ? { error_code: errorCode } : {}),
+    ...(message ? { error_message: message } : {}),
+    ...(providerName ? { provider_name: providerName } : {}),
+    ...(providerCode ? { provider_code: providerCode } : {}),
+  };
 }
 
 async function rateLimitDiagnostics(response: Response): Promise<RateLimitDiagnostics> {
@@ -185,10 +248,6 @@ export class OpenRouterProvider implements GenerationProvider {
         { role: "system", content: request.systemPrompt },
         { role: "user", content: request.userPrompt },
       ],
-      reasoning: {
-        effort: "none",
-        exclude: true,
-      },
       temperature: request.outputMode === "reply_with_analysis" ? 0.4 : 0.7,
       max_tokens: request.outputMode === "reply_with_analysis" ? 320 : 220,
     };
@@ -227,10 +286,12 @@ export class OpenRouterProvider implements GenerationProvider {
           continue;
         }
 
+        const diagnostics = response.status === 404 ? await notFoundDiagnostics(response) : undefined;
         throw new ProviderError(`OpenRouter returned HTTP ${response.status}.`, {
           code: "UPSTREAM_ERROR",
           status: response.status,
           retryable: shouldRetry(response.status),
+          ...(diagnostics ? { diagnostics } : {}),
         });
       }
 

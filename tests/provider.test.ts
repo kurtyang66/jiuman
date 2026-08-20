@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ProviderConfigurationError, ProviderRateLimitError } from "../server/errors.js";
+import { ProviderConfigurationError, ProviderError, ProviderRateLimitError } from "../server/errors.js";
 import { createGenerationProvider } from "../server/providers/index.js";
 import {
   isFreeOpenRouterModel,
@@ -39,16 +39,14 @@ test("OpenRouter adapter sends an OpenAI-compatible chat completion request", as
   assert.equal(calledUrl, "https://openrouter.ai/api/v1/chat/completions");
   assert.equal((calledInit?.headers as Record<string, string>).Authorization, "Bearer sk-or-test");
   assert.equal((calledInit?.headers as Record<string, string>)["Content-Type"], "application/json");
-  assert.deepEqual(JSON.parse(String(calledInit?.body)), {
+  const sentBody = JSON.parse(String(calledInit?.body));
+  assert.equal("reasoning" in sentBody, false);
+  assert.deepEqual(sentBody, {
     model: "openrouter/free",
     messages: [
       { role: "system", content: "system" },
       { role: "user", content: "user" },
     ],
-    reasoning: {
-      effort: "none",
-      exclude: true,
-    },
     temperature: 0.7,
     max_tokens: 220,
   });
@@ -102,6 +100,107 @@ test("OpenRouter rate limits are bounded and retry behavior is injectable", asyn
     assert.ok(error instanceof ProviderRateLimitError);
     return true;
   });
+});
+
+test("404 B: classifies a model-not-found payload and preserves bounded safe fields", async () => {
+  const provider = new OpenRouterProvider({
+    apiKey: "sk-or-test",
+    fetchImpl: (async () =>
+      new Response(
+        JSON.stringify({
+          error: { code: 404, message: "No such model: example/model:free" },
+        }),
+        { status: 404, headers: { "content-type": "application/json" } },
+      )) as typeof fetch,
+  });
+
+  await assert.rejects(provider.generate(request), (error: unknown) => {
+    assert.ok(error instanceof ProviderError);
+    assert.ok(error.diagnostics && "classification" in error.diagnostics);
+    assert.equal(error.diagnostics.classification, "MODEL_NOT_FOUND");
+    assert.equal(error.diagnostics.error_code, 404);
+    assert.equal(error.diagnostics.error_message, "No such model: example/model:free");
+    return true;
+  });
+});
+
+test("404 C: classifies a no-endpoints payload", async () => {
+  const provider = new OpenRouterProvider({
+    apiKey: "sk-or-test",
+    fetchImpl: (async () =>
+      new Response(
+        JSON.stringify({
+          error: { code: 404, message: "No endpoints found for this model" },
+        }),
+        { status: 404, headers: { "content-type": "application/json" } },
+      )) as typeof fetch,
+  });
+
+  await assert.rejects(provider.generate(request), (error: unknown) => {
+    assert.ok(error instanceof ProviderError);
+    assert.ok(error.diagnostics && "classification" in error.diagnostics);
+    assert.equal(error.diagnostics.classification, "NO_COMPATIBLE_ENDPOINT");
+    return true;
+  });
+});
+
+test("404 D: preserves safe provider metadata and classifies data-policy endpoint loss", async () => {
+  const provider = new OpenRouterProvider({
+    apiKey: "sk-or-test",
+    fetchImpl: (async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 404,
+            message: "No endpoint available due to data policy",
+            metadata: { provider_name: "Example Provider", provider_code: "data_policy" },
+          },
+        }),
+        { status: 404, headers: { "content-type": "application/json" } },
+      )) as typeof fetch,
+  });
+
+  await assert.rejects(provider.generate(request), (error: unknown) => {
+    assert.ok(error instanceof ProviderError);
+    assert.ok(error.diagnostics && "classification" in error.diagnostics);
+    assert.equal(error.diagnostics.classification, "DATA_POLICY_NO_ENDPOINT");
+    assert.equal(error.diagnostics.provider_name, "Example Provider");
+    assert.equal(error.diagnostics.provider_code, "data_policy");
+    assert.equal(error.diagnostics.error_message, "No endpoint available due to data policy");
+    return true;
+  });
+});
+
+test("404 E: diagnostics omit credentials and raw request content", async () => {
+  const secret = "sk-or-secret-test";
+  const rawRequest = {
+    systemPrompt: "private system prompt must not be retained",
+    userPrompt: "private conversation must not be retained",
+    outputMode: "reply_only" as const,
+  };
+  const provider = new OpenRouterProvider({
+    apiKey: secret,
+    fetchImpl: (async () =>
+      new Response(
+        JSON.stringify({
+          error: { code: 404, message: "Unknown model endpoint" },
+        }),
+        { status: 404, headers: { "content-type": "application/json" } },
+      )) as typeof fetch,
+  });
+
+  let caught: unknown;
+  try {
+    await provider.generate(rawRequest);
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.ok(caught instanceof ProviderError);
+  const rendered = [caught.message, caught.stack, JSON.stringify(caught)].join("\n");
+  assert.equal(rendered.includes(secret), false);
+  assert.equal(rendered.includes(rawRequest.systemPrompt), false);
+  assert.equal(rendered.includes(rawRequest.userPrompt), false);
 });
 
 test("429 A: classifies platform limits and preserves safe rate-limit headers", async () => {
@@ -230,7 +329,7 @@ test("provider registry defaults to configurable OpenRouter and retains unconfig
 
 test("free model eligibility accepts the router and explicit :free variants only", () => {
   assert.equal(isFreeOpenRouterModel("openrouter/free"), true);
-  assert.equal(isFreeOpenRouterModel("qwen/qwen3-32b:free"), true);
+  assert.equal(isFreeOpenRouterModel("google/gemma-4-26b-a4b-it:free"), true);
   assert.equal(isFreeOpenRouterModel("google/gemma-4-31b-it"), false);
   assert.equal(isFreeOpenRouterModel("openai/gpt-5"), false);
 });
