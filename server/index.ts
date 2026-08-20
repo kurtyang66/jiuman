@@ -1,14 +1,13 @@
 import dotenv from "dotenv";
 import { createServer as createNodeHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createGenerationProvider } from "./providers/index.js";
 import type { GenerationProvider } from "./providers/types.js";
 import { registerReplyAsJiumanTool } from "./tools/reply-as-jiuman.js";
 
-export const APP_VERSION = "0.2.0";
+export const APP_VERSION = "0.3.0";
 export const DEFAULT_PORT = 3000;
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local"), override: false, quiet: true });
@@ -25,6 +24,26 @@ function sendJson(response: ServerResponse, status: number, payload: unknown): v
   response.statusCode = status;
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(payload));
+}
+
+export function healthPayload(provider: GenerationProvider): {
+  ok: true;
+  service: string;
+  version: string;
+  provider: string;
+  provider_configured: boolean;
+  model: string;
+  persistence: "none";
+} {
+  return {
+    ok: true,
+    service: "jiuman",
+    version: APP_VERSION,
+    provider: provider.name,
+    provider_configured: provider.configured,
+    model: provider.model,
+    persistence: "none",
+  };
 }
 
 async function readJsonBody(request: IncomingMessage, maxBytes = 1_000_000): Promise<unknown> {
@@ -102,15 +121,7 @@ export function createHttpServer(provider: GenerationProvider = createGeneration
     const requestUrl = new URL(request.url || "/", "http://localhost");
 
     if (requestUrl.pathname === "/healthz" && request.method === "GET") {
-      sendJson(response, 200, {
-        ok: true,
-        service: "jiuman",
-        version: APP_VERSION,
-        provider: provider.name,
-        provider_configured: provider.configured,
-        model: provider.model,
-        persistence: "none",
-      });
+      sendJson(response, 200, healthPayload(provider));
       return;
     }
 
@@ -139,12 +150,4 @@ export async function startServer(port = Number(process.env.PORT || DEFAULT_PORT
     });
   });
   console.log(`Jiuman MCP server listening on http://localhost:${port}/mcp`);
-}
-
-const entryPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
-if (entryPath === path.resolve(fileURLToPath(import.meta.url))) {
-  startServer().catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : "Failed to start Jiuman MCP server.");
-    process.exitCode = 1;
-  });
 }

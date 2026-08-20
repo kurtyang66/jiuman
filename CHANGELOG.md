@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 - 2026-08-20
+
+### Added
+
+- Minimal stateless `POST /api/reply` endpoint for Custom GPT Actions
+- OpenAPI 3.1 schema that can be pasted into GPT Builder
+- Mock-only REST Action contract tests and bounded production Action smoke command
+
+### Preserved
+
+- Existing remote `/mcp` deployment and `reply_as_jiuman` MCP tool
+- Provider-agnostic BYOK architecture with the server-side OpenRouter maintainer key
+
 ## 0.2.0 - 2026-08-20
 
 ### Added

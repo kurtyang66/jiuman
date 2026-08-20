@@ -1,6 +1,6 @@
 {
   "name": "jiuman-chatgpt-app",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": false,
   "description": "A tool-only ChatGPT App MCP server for the Jiuman persona.",
   "type": "module",
@@ -8,13 +8,15 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx watch server/index.ts",
-    "start": "tsx server/index.ts",
+    "dev": "tsx watch server/cli.ts",
+    "start": "tsx server/cli.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "tsx --test tests/*.test.ts",
     "smoke:local": "tsx scripts/local-smoke.ts",
-    "smoke:live": "tsx scripts/live-smoke.ts"
+    "smoke:live": "tsx scripts/live-smoke.ts",
+    "smoke:remote": "tsx scripts/remote-smoke.ts",
+    "smoke:action": "tsx scripts/action-smoke.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
