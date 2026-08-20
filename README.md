@@ -84,6 +84,26 @@ Then check `http://localhost:3000/healthz`. `npm test` and `npm run smoke:local`
 
 To connect the deployed server in ChatGPT, enable Developer Mode, create an app with the public HTTPS `/mcp` endpoint, and complete the manual connection flow described in the official [Apps SDK connection documentation](https://developers.openai.com/apps-sdk/deploy/). This repository does not claim a deployment or ChatGPT connection until that external step is completed.
 
+### Remote deployment for maintainer development
+
+The repository includes a minimal Vercel Node deployment adapter. It rewrites the stable public routes `/mcp` and `/healthz` to the corresponding functions under `api/`; the local Node server remains available through `npm start`. No transcript, raw request body, or conversation database is added by the remote adapter.
+
+For a maintainer-hosted development deployment, configure these Vercel environment variables outside the repository before deploying:
+
+```sh
+GENERATION_PROVIDER=openrouter
+OPENROUTER_API_KEY=your-key-here
+OPENROUTER_MODEL=openrouter/free
+```
+
+`OPENROUTER_API_KEY` must be stored as a sensitive Vercel Preview/Production variable. The deployment is a single-maintainer dev endpoint, not a final public multi-user BYOK service: it has no user account layer, OAuth flow, billing, or database. A self-hosted deployment should provide its own provider credential and operational controls; do not reuse a maintainer key for other users.
+
+After the deployment is reachable, verify `/healthz`, MCP initialization, and that `tools/list` contains only `reply_as_jiuman`. The bounded `npm run smoke:remote -- https://your-deployment.example` command performs three real provider-backed calls (normal, replacement sensitivity, and reassurance) and prints only pass/fail metadata. It does not print generated replies.
+
+In ChatGPT Developer Mode, add the public `https://your-deployment.example/mcp` URL through the Plugins/App connection flow, review the discovered tool metadata, refresh the connection after server changes, and run the maintainer evaluation prompts in a new chat. This manual account-side connection is distinct from public submission or marketplace publication.
+
+The default `openrouter/free` router selects an available free model, so responses can vary across models and availability windows. Remote smoke verifies end-to-end connectivity and basic Jiuman fidelity; it is not a deterministic model benchmark. Avoid sending sensitive relationship content unless the selected provider's terms, retention, and data residency are acceptable.
+
 ## Files
 
 - SKILL.md — the reusable persona instructions
