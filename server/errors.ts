@@ -3,7 +3,8 @@ export type ProviderErrorCode =
   | "NETWORK_ERROR"
   | "RATE_LIMITED"
   | "UPSTREAM_ERROR"
-  | "INVALID_RESPONSE";
+  | "INVALID_RESPONSE"
+  | "INVALID_META_OUTPUT";
 
 export class ProviderError extends Error {
   readonly code: ProviderErrorCode;
@@ -35,9 +36,16 @@ export class ProviderConfigurationError extends ProviderError {
 }
 
 export class ProviderResponseError extends ProviderError {
-  constructor(message: string, options: { status?: number; cause?: unknown } = {}) {
+  constructor(
+    message: string,
+    options: {
+      code?: "INVALID_RESPONSE" | "INVALID_META_OUTPUT";
+      status?: number;
+      cause?: unknown;
+    } = {},
+  ) {
     super(message, {
-      code: "INVALID_RESPONSE",
+      code: options.code ?? "INVALID_RESPONSE",
       status: options.status,
       cause: options.cause,
     });

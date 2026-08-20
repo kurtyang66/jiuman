@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ReplyOutputError } from "./errors.js";
+import { ProviderResponseError, ReplyOutputError } from "./errors.js";
 import { loadPersona } from "./persona.js";
 import type {
   GenerationProvider,
@@ -127,6 +127,24 @@ function parseJsonObject(text: string): Record<string, unknown> | undefined {
   return undefined;
 }
 
+const META_OUTPUT_PATTERNS = [
+  /^(?:user|assistant)\s+safety:\s+(?:safe|unsafe)$/i,
+  /^safety:\s+(?:safe|unsafe)$/i,
+];
+
+export function isMetaOutput(text: string): boolean {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  return META_OUTPUT_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function rejectMetaOutput(text: string): void {
+  if (isMetaOutput(text)) {
+    throw new ProviderResponseError("Provider returned a meta classification instead of a persona reply.", {
+      code: "INVALID_META_OUTPUT",
+    });
+  }
+}
+
 function parseReplyOnly(text: string): ReplyOnlyOutput {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -135,9 +153,12 @@ function parseReplyOnly(text: string): ReplyOnlyOutput {
 
   const object = trimmed.startsWith("{") || trimmed.startsWith("```") ? parseJsonObject(trimmed) : undefined;
   if (object && typeof object.reply === "string" && object.reply.trim()) {
-    return { reply: object.reply.trim() };
+    const reply = object.reply.trim();
+    rejectMetaOutput(reply);
+    return { reply };
   }
 
+  rejectMetaOutput(trimmed);
   return { reply: trimmed };
 }
 
@@ -154,6 +175,7 @@ function parseReplyWithAnalysis(text: string, fallbackMode: Intensity): ReplyWit
     ? object.triggers.filter((trigger): trigger is string => typeof trigger === "string").slice(0, 8)
     : [];
   const briefAnalysis = typeof object.brief_analysis === "string" ? object.brief_analysis.trim() : "";
+  rejectMetaOutput(object.reply.trim());
 
   return {
     reply: object.reply.trim(),
@@ -170,11 +192,28 @@ export async function generateReply(
 ): Promise<ReplyOutput> {
   const parsedInput = replyInputSchema.parse(input);
   const request = buildGenerationRequest(parsedInput, persona ?? loadPersona());
-  const result = await provider.generate(request);
+  let semanticRetries = 0;
 
-  if (parsedInput.output_mode === "reply_only") {
-    return parseReplyOnly(result.text);
+  while (true) {
+    const result = await provider.generate(request);
+
+    try {
+      rejectMetaOutput(result.text);
+      if (parsedInput.output_mode === "reply_only") {
+        return parseReplyOnly(result.text);
+      }
+
+      return parseReplyWithAnalysis(result.text, parsedInput.intensity);
+    } catch (error) {
+      if (
+        error instanceof ProviderResponseError &&
+        error.code === "INVALID_META_OUTPUT" &&
+        semanticRetries === 0
+      ) {
+        semanticRetries += 1;
+        continue;
+      }
+      throw error;
+    }
   }
-
-  return parseReplyWithAnalysis(result.text, parsedInput.intensity);
 }

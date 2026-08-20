@@ -8,6 +8,12 @@ import type { GenerationProvider, GenerationRequest, GenerationResult } from "./
 
 export const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 export const OPENROUTER_FREE_MODEL = "openrouter/free";
+export const OPENROUTER_DEFAULT_MODEL = "google/gemma-4-31b-it:free";
+
+export function isFreeOpenRouterModel(model: string): boolean {
+  const normalized = model.trim();
+  return normalized === OPENROUTER_FREE_MODEL || normalized.endsWith(":free");
+}
 
 type Sleep = (milliseconds: number) => Promise<void>;
 
@@ -76,6 +82,7 @@ function shouldRetry(status: number): boolean {
 export class OpenRouterProvider implements GenerationProvider {
   readonly name = "openrouter";
   readonly model: string;
+  lastResolvedModel?: string;
   private readonly apiKey?: string;
   private readonly baseUrl: string;
   private readonly siteUrl?: string;
@@ -86,7 +93,7 @@ export class OpenRouterProvider implements GenerationProvider {
 
   constructor(options: OpenRouterProviderOptions = {}) {
     this.apiKey = options.apiKey?.trim() || undefined;
-    this.model = options.model?.trim() || OPENROUTER_FREE_MODEL;
+    this.model = options.model?.trim() || OPENROUTER_DEFAULT_MODEL;
     this.baseUrl = (options.baseUrl || OPENROUTER_DEFAULT_BASE_URL).replace(/\/$/, "");
     this.siteUrl = options.siteUrl?.trim() || undefined;
     this.appName = options.appName?.trim() || undefined;
@@ -176,10 +183,9 @@ export class OpenRouterProvider implements GenerationProvider {
         throw new ProviderResponseError("OpenRouter returned an empty assistant message.");
       }
 
-      return {
-        text,
-        model: typeof payload.model === "string" ? payload.model : this.model,
-      };
+      const resolvedModel = typeof payload.model === "string" ? payload.model : this.model;
+      this.lastResolvedModel = resolvedModel;
+      return { text, model: resolvedModel };
     }
 
     throw new ProviderResponseError("OpenRouter request did not produce a response.");

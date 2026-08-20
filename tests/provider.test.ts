@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ProviderConfigurationError, ProviderRateLimitError } from "../server/errors.js";
 import { createGenerationProvider } from "../server/providers/index.js";
-import { OpenRouterProvider } from "../server/providers/openrouter.js";
+import {
+  isFreeOpenRouterModel,
+  OpenRouterProvider,
+  OPENROUTER_DEFAULT_MODEL,
+} from "../server/providers/openrouter.js";
 
 const request = {
   systemPrompt: "system",
@@ -103,10 +107,17 @@ test("OpenRouter rate limits are bounded and retry behavior is injectable", asyn
 test("provider registry defaults to configurable OpenRouter and retains unconfigured Gemini", () => {
   const openrouter = createGenerationProvider({});
   assert.equal(openrouter.name, "openrouter");
-  assert.equal(openrouter.model, "openrouter/free");
+  assert.equal(openrouter.model, OPENROUTER_DEFAULT_MODEL);
   assert.equal(openrouter.configured, false);
 
   const gemini = createGenerationProvider({ GENERATION_PROVIDER: "gemini" });
   assert.equal(gemini.name, "gemini");
   assert.equal(gemini.configured, false);
+});
+
+test("free model eligibility accepts the router and explicit :free variants only", () => {
+  assert.equal(isFreeOpenRouterModel("openrouter/free"), true);
+  assert.equal(isFreeOpenRouterModel("google/gemma-4-31b-it:free"), true);
+  assert.equal(isFreeOpenRouterModel("google/gemma-4-31b-it"), false);
+  assert.equal(isFreeOpenRouterModel("openai/gpt-5"), false);
 });

@@ -8,6 +8,8 @@
 - Preserved multi-turn joke, test, serious, and responsibility drift
 - Added a multi-signal threshold for formal remorse and a negative control for isolated severe-sounding phrases
 - Preserved the existing scorekeeping, immediacy, practical cooperation, neutral, and anti-poetic behavior
+- Pinned the maintainer's free smoke reference to `google/gemma-4-31b-it:free`
+- Added narrow provider meta-output rejection with one bounded same-model semantic retry
 
 ## 0.3.1 - 2026-08-20
 
