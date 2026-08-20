@@ -6,6 +6,17 @@ export type ProviderErrorCode =
   | "INVALID_RESPONSE"
   | "INVALID_META_OUTPUT";
 
+export type RateLimitSource = "OPENROUTER_PLATFORM" | "UPSTREAM_PROVIDER" | "UNKNOWN";
+
+export type RateLimitDiagnostics = {
+  source: RateLimitSource;
+  provider_code?: string;
+  retry_after_seconds?: number;
+  "x-ratelimit-limit"?: string;
+  "x-ratelimit-remaining"?: string;
+  "x-ratelimit-reset"?: string;
+};
+
 export class ProviderError extends Error {
   readonly code: ProviderErrorCode;
   readonly status?: number;
@@ -54,9 +65,16 @@ export class ProviderResponseError extends ProviderError {
 }
 
 export class ProviderRateLimitError extends ProviderError {
-  constructor(message: string, status = 429) {
+  readonly diagnostics: RateLimitDiagnostics;
+
+  constructor(
+    message: string,
+    status = 429,
+    diagnostics: RateLimitDiagnostics = { source: "UNKNOWN" },
+  ) {
     super(message, { code: "RATE_LIMITED", status, retryable: true });
     this.name = "ProviderRateLimitError";
+    this.diagnostics = Object.freeze({ ...diagnostics });
   }
 }
 

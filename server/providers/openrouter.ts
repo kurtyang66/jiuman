@@ -4,6 +4,7 @@ import {
   ProviderRateLimitError,
   ProviderResponseError,
 } from "../errors.js";
+import type { RateLimitDiagnostics, RateLimitSource } from "../errors.js";
 import type { GenerationProvider, GenerationRequest, GenerationResult } from "./types.js";
 
 export const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
@@ -37,6 +38,15 @@ type OpenRouterResponse = {
   }>;
 };
 
+type OpenRouterErrorResponse = {
+  error?: {
+    metadata?: {
+      provider_code?: unknown;
+      error_type?: unknown;
+    };
+  };
+};
+
 function defaultSleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -63,16 +73,65 @@ function responseContent(payload: OpenRouterResponse): string {
   return "";
 }
 
-function retryAfterMilliseconds(response: Response, attempt: number): number {
+function retryAfterSeconds(response: Response): number | undefined {
   const retryAfter = response.headers.get("retry-after");
   if (retryAfter) {
     const seconds = Number(retryAfter);
     if (Number.isFinite(seconds) && seconds >= 0) {
-      return Math.min(seconds * 1000, 10_000);
+      return seconds;
     }
   }
 
+  return undefined;
+}
+
+function retryAfterMilliseconds(response: Response, attempt: number): number {
+  const seconds = retryAfterSeconds(response);
+  if (seconds !== undefined) {
+    return Math.min(seconds * 1000, 10_000);
+  }
+
   return Math.min(2_000, 250 * 2 ** attempt);
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
+}
+
+async function rateLimitDiagnostics(response: Response): Promise<RateLimitDiagnostics> {
+  let errorPayload: OpenRouterErrorResponse | undefined;
+  try {
+    errorPayload = (await response.json()) as OpenRouterErrorResponse;
+  } catch {
+    errorPayload = undefined;
+  }
+
+  const metadata = errorPayload?.error?.metadata;
+  const providerCode = nonEmptyString(metadata?.provider_code);
+  const errorType = nonEmptyString(metadata?.error_type);
+  const rateLimitLimit = nonEmptyString(response.headers.get("x-ratelimit-limit"));
+  const rateLimitRemaining = nonEmptyString(response.headers.get("x-ratelimit-remaining"));
+  const rateLimitReset = nonEmptyString(response.headers.get("x-ratelimit-reset"));
+  const hasPlatformHeaders = Boolean(rateLimitLimit || rateLimitRemaining || rateLimitReset);
+  const retryAfter = retryAfterSeconds(response);
+
+  let source: RateLimitSource = "UNKNOWN";
+  if (providerCode) {
+    source = "UPSTREAM_PROVIDER";
+  } else if (hasPlatformHeaders || errorType === "rate_limit_exceeded") {
+    source = "OPENROUTER_PLATFORM";
+  }
+
+  return {
+    source,
+    ...(providerCode ? { provider_code: providerCode } : {}),
+    ...(retryAfter !== undefined ? { retry_after_seconds: retryAfter } : {}),
+    ...(rateLimitLimit ? { "x-ratelimit-limit": rateLimitLimit } : {}),
+    ...(rateLimitRemaining ? { "x-ratelimit-remaining": rateLimitRemaining } : {}),
+    ...(rateLimitReset ? { "x-ratelimit-reset": rateLimitReset } : {}),
+  };
 }
 
 function shouldRetry(status: number): boolean {
@@ -156,7 +215,11 @@ export class OpenRouterProvider implements GenerationProvider {
             await this.sleep(retryAfterMilliseconds(response, attempt));
             continue;
           }
-          throw new ProviderRateLimitError("OpenRouter rate limit reached.");
+          throw new ProviderRateLimitError(
+            "OpenRouter rate limit reached.",
+            response.status,
+            await rateLimitDiagnostics(response),
+          );
         }
 
         if (shouldRetry(response.status) && attempt < this.maxRetries) {

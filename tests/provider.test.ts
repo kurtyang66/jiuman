@@ -104,6 +104,119 @@ test("OpenRouter rate limits are bounded and retry behavior is injectable", asyn
   });
 });
 
+test("429 A: classifies platform limits and preserves safe rate-limit headers", async () => {
+  const provider = new OpenRouterProvider({
+    apiKey: "sk-or-test",
+    fetchImpl: (async () =>
+      new Response(JSON.stringify({ error: { code: 429, message: "rate limited" } }), {
+        status: 429,
+        headers: {
+          "content-type": "application/json",
+          "Retry-After": "60",
+          "X-RateLimit-Limit": "50",
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": "1710000000",
+        },
+      })) as typeof fetch,
+  });
+
+  await assert.rejects(provider.generate(request), (error: unknown) => {
+    assert.ok(error instanceof ProviderRateLimitError);
+    assert.deepEqual(error.diagnostics, {
+      source: "OPENROUTER_PLATFORM",
+      retry_after_seconds: 60,
+      "x-ratelimit-limit": "50",
+      "x-ratelimit-remaining": "0",
+      "x-ratelimit-reset": "1710000000",
+    });
+    return true;
+  });
+});
+
+test("429 B: classifies an upstream provider error from provider_code", async () => {
+  const provider = new OpenRouterProvider({
+    apiKey: "sk-or-test",
+    fetchImpl: (async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 429,
+            message: "upstream rate limited",
+            metadata: { error_type: "rate_limit_exceeded", provider_code: "rate_limited" },
+          },
+        }),
+        { status: 429, headers: { "content-type": "application/json" } },
+      )) as typeof fetch,
+  });
+
+  await assert.rejects(provider.generate(request), (error: unknown) => {
+    assert.ok(error instanceof ProviderRateLimitError);
+    assert.equal(error.diagnostics.source, "UPSTREAM_PROVIDER");
+    assert.equal(error.diagnostics.provider_code, "rate_limited");
+    return true;
+  });
+});
+
+test("429 C: classifies an ambiguous response as unknown", async () => {
+  const provider = new OpenRouterProvider({
+    apiKey: "sk-or-test",
+    fetchImpl: (async () =>
+      new Response(JSON.stringify({ error: { code: 429, message: "rate limited" } }), {
+        status: 429,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch,
+  });
+
+  await assert.rejects(provider.generate(request), (error: unknown) => {
+    assert.ok(error instanceof ProviderRateLimitError);
+    assert.deepEqual(error.diagnostics, { source: "UNKNOWN" });
+    return true;
+  });
+});
+
+test("429 D: parses a numeric Retry-After value safely", async () => {
+  const provider = new OpenRouterProvider({
+    apiKey: "sk-or-test",
+    fetchImpl: (async () =>
+      new Response("", {
+        status: 429,
+        headers: { "Retry-After": "12.5" },
+      })) as typeof fetch,
+  });
+
+  await assert.rejects(provider.generate(request), (error: unknown) => {
+    assert.ok(error instanceof ProviderRateLimitError);
+    assert.equal(error.diagnostics.retry_after_seconds, 12.5);
+    return true;
+  });
+});
+
+test("429 E: diagnostics omit credentials and request content", async () => {
+  const secret = "sk-or-secret-test";
+  const rawRequest = {
+    systemPrompt: "private system prompt must not be retained",
+    userPrompt: "private conversation must not be retained",
+    outputMode: "reply_only" as const,
+  };
+  const provider = new OpenRouterProvider({
+    apiKey: secret,
+    fetchImpl: (async () => new Response("", { status: 429 })) as typeof fetch,
+  });
+
+  let caught: unknown;
+  try {
+    await provider.generate(rawRequest);
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.ok(caught instanceof ProviderRateLimitError);
+  const rendered = [caught.message, caught.stack, JSON.stringify(caught)].join("\n");
+  assert.equal(rendered.includes(secret), false);
+  assert.equal(rendered.includes(rawRequest.systemPrompt), false);
+  assert.equal(rendered.includes(rawRequest.userPrompt), false);
+});
+
 test("provider registry defaults to configurable OpenRouter and retains unconfigured Gemini", () => {
   const openrouter = createGenerationProvider({});
   assert.equal(openrouter.name, "openrouter");
