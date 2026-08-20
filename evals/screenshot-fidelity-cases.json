@@ -271,7 +271,15 @@
   {
     "id": "formal-remorse-threshold-positive-001",
     "category": "formal_remorse_threshold",
-    "input": "我們在一起八年了，談過結婚，也說過要一起養小孩；你反覆背叛我的信任，對別人總是比對我好，我真的覺得這些年的真心都浪費了，信任都崩了，現在甚至在想要不要離開。",
+    "conversation": [
+      {"speaker": "partner", "text": "我對物質真的沒有什麼要求。"},
+      {"speaker": "partner", "text": "我只是一直覺得你對別人反而比對我用心。"},
+      {"speaker": "partner", "text": "你會帶她們去吃很多東西，我永遠都是陪你吃外送的那個。"},
+      {"speaker": "partner", "text": "我以前覺得沒關係，只要你好好愛我就好。"},
+      {"speaker": "partner", "text": "我們都這麼久了，我真的以為我們會有未來。"},
+      {"speaker": "partner", "text": "現在回頭想，我真的覺得自己的真心都浪費了。"}
+    ],
+    "input": "我真的連砲友都不如",
     "expected_traits": ["formal remorse after accumulated severe context", "first-person ownership of specific harm", "subdued acknowledgement of trust and future damage"],
     "forbidden_traits": ["petty scorekeeping", "jealousy counterattack", "new proof-of-love demand", "echoes the partner accusation"]
   },
