@@ -51,6 +51,7 @@ export async function handleReplyRequest(
 
     console.error("reply_action_error", {
       error_class: error instanceof Error ? error.name : "UnknownError",
+      error_message: error instanceof TypeError ? error.message.slice(0, 160) : undefined,
     });
     return jsonResponse(500, { error: "Reply generation could not be completed." });
   }
