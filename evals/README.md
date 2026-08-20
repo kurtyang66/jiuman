@@ -22,6 +22,6 @@ The file should parse as one JSON array. A local JSON parser such as jq can veri
 
 ## Screenshot fidelity fixture
 
-`screenshot-fidelity-cases.json` is a separate, compact 30-case contract fixture for screenshot-grounded persona review. It keeps the original 66 cases untouched and covers scorekeeping, large deductions, concrete repair, immediacy-as-sincerity, proof by action, third-person pressure and comparison, joke-to-test-to-serious drift, direct judgment, practical cooperation, formal remorse, softening, anti-poetic regressions, and neutral controls.
+`screenshot-fidelity-cases.json` is a separate, compact 40-case contract fixture for screenshot-grounded persona review. It keeps the original 66 cases and the v0.3.1 30-case screenshot baseline untouched, then adds 10 v0.3.2 targeted cases for defensive-before-softening, multi-turn responsibility drift, formal-remorse threshold controls, and preserved neutral/immediacy behavior.
 
 The screenshot fixture uses trait-level expectations rather than exact-output assertions. Its count is reported separately from `reply-cases.json` by `tests/evals.test.ts`.

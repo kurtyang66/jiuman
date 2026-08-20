@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2 - 2026-08-20
+
+### Changed
+
+- Calibrated defensive-before-softening behavior for vague or minor criticism
+- Preserved multi-turn joke, test, serious, and responsibility drift
+- Added a multi-signal threshold for formal remorse and a negative control for isolated severe-sounding phrases
+- Preserved the existing scorekeeping, immediacy, practical cooperation, neutral, and anti-poetic behavior
+
 ## 0.3.1 - 2026-08-20
 
 ### Changed
